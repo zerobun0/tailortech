@@ -22,6 +22,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoGraph
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Straighten
 import androidx.compose.material.icons.filled.ViewInAr
 import androidx.compose.material3.Card
@@ -34,11 +35,13 @@ import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -48,6 +51,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -61,6 +65,8 @@ import com.tailortech.app.data.UserMeasurements
 import com.tailortech.app.data.round1
 import com.tailortech.app.data.toInches
 import com.tailortech.app.domain.FitInsightsEngine
+import com.tailortech.app.domain.AppSettings
+import com.tailortech.app.domain.AppSettingsStore
 import com.tailortech.app.domain.GeminiFitAdvisor
 import com.tailortech.app.domain.GlobalSizeAdvisor
 import com.tailortech.app.domain.OutfitAdviceResult
@@ -70,14 +76,21 @@ import com.tailortech.app.ui.theme.Border
 import com.tailortech.app.ui.theme.Surface
 import com.tailortech.app.ui.theme.Surface2
 import com.tailortech.app.ui.theme.TextMuted
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TailorTechApp(viewModel: MainViewModel) {
+    val context = LocalContext.current
+    val settingsStore = remember(context) { AppSettingsStore(context) }
     val measurements by viewModel.measurements.collectAsStateWithLifecycle()
     val selectedTab by viewModel.selectedTab.collectAsStateWithLifecycle()
     val selectedCountry by viewModel.selectedCountry.collectAsStateWithLifecycle()
+    var appSettings by remember { mutableStateOf(settingsStore.load()) }
+    var showSettingsSheet by remember { mutableStateOf(false) }
+
+    GeminiFitAdvisor.setRuntimeApiKeyOverride(appSettings.geminiApiKeyOverride)
 
     Scaffold(
         topBar = {
@@ -89,8 +102,8 @@ fun TailorTechApp(viewModel: MainViewModel) {
                     }
                 },
                 actions = {
-                    TextButton(onClick = { viewModel.toggleUnitSystem() }) {
-                        Text(if (measurements.unitSystem == UnitSystem.CM) "CM" else "IN")
+                    IconButton(onClick = { showSettingsSheet = true }) {
+                        Icon(Icons.Default.Settings, contentDescription = "Settings")
                     }
                 }
             )
@@ -110,9 +123,17 @@ fun TailorTechApp(viewModel: MainViewModel) {
             when (selectedTab) {
                 TailorTab.DASHBOARD -> DashboardScreen(
                     measurements = measurements,
-                    selectedCountry = selectedCountry
+                    selectedCountry = selectedCountry,
+                    appSettings = appSettings
                 )
-                TailorTab.BLUEPRINT -> BlueprintScreen(measurements, onUpdate = viewModel::updateField)
+                TailorTab.BLUEPRINT -> BlueprintScreen(
+                    measurements,
+                    onUpdate = viewModel::updateField,
+                    onMeasurementSaved = {
+                        settingsStore.updateLastMeasurementNow()
+                        appSettings = settingsStore.load()
+                    }
+                )
                 TailorTab.SIZE_INSIGHTS -> SizeInsightsScreen(
                     measurements = measurements,
                     selectedCountry = selectedCountry,
@@ -120,6 +141,20 @@ fun TailorTechApp(viewModel: MainViewModel) {
                 )
             }
         }
+    }
+
+    if (showSettingsSheet) {
+        SettingsSheet(
+            measurements = measurements,
+            appSettings = appSettings,
+            onDismiss = { showSettingsSheet = false },
+            onToggleUnit = { viewModel.toggleUnitSystem() },
+            onSaveSettings = { updated ->
+                settingsStore.save(updated)
+                appSettings = settingsStore.load()
+                GeminiFitAdvisor.setRuntimeApiKeyOverride(appSettings.geminiApiKeyOverride)
+            }
+        )
     }
 }
 
@@ -153,7 +188,8 @@ private fun TailorTabs(selected: TailorTab, onSelect: (TailorTab) -> Unit) {
 @Composable
 private fun DashboardScreen(
     measurements: UserMeasurements,
-    selectedCountry: String
+    selectedCountry: String,
+    appSettings: AppSettings
 ) {
     val scroll = rememberScrollState()
     var selectedStat by remember { mutableStateOf<StatDetail?>(null) }
@@ -164,6 +200,10 @@ private fun DashboardScreen(
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
     ) {
+        if (appSettings.remindersEnabled) {
+            ReminderCard(appSettings = appSettings)
+        }
+
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -339,6 +379,157 @@ private fun DataSection(title: String, rows: List<Pair<String, String>>) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable
+private fun SettingsSheet(
+    measurements: UserMeasurements,
+    appSettings: AppSettings,
+    onDismiss: () -> Unit,
+    onToggleUnit: () -> Unit,
+    onSaveSettings: (AppSettings) -> Unit
+) {
+    var remindersEnabled by remember(appSettings) { mutableStateOf(appSettings.remindersEnabled) }
+    var reminderDays by remember(appSettings) { mutableStateOf(appSettings.reminderIntervalDays) }
+    var geminiKey by remember(appSettings) { mutableStateOf(appSettings.geminiApiKeyOverride) }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = Surface
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp)
+        ) {
+            Text("Settings", style = MaterialTheme.typography.titleLarge, color = AccentLime)
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Text("Measurement Units", style = MaterialTheme.typography.titleMedium)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "Current: ${if (measurements.unitSystem == UnitSystem.CM) "Centimeters (cm)" else "Inches (in)"}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextMuted
+                )
+                TextButton(onClick = onToggleUnit) {
+                    Text(if (measurements.unitSystem == UnitSystem.CM) "Switch to Inches" else "Switch to CM")
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Text("Measurement Reminders", style = MaterialTheme.typography.titleMedium)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Enable reminder nudges", style = MaterialTheme.typography.bodyMedium)
+                Switch(checked = remindersEnabled, onCheckedChange = { remindersEnabled = it })
+            }
+
+            if (remindersEnabled) {
+                Spacer(modifier = Modifier.height(8.dp))
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(7, 14, 30).forEach { days ->
+                        FilterChip(
+                            selected = reminderDays == days,
+                            onClick = { reminderDays = days },
+                            label = { Text("Every $days days") }
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Text("Gemini API Key Override", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "Leave blank to use GEMINI_API_KEY from Gradle properties.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = TextMuted
+            )
+            OutlinedTextField(
+                value = geminiKey,
+                onValueChange = { geminiKey = it },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp),
+                singleLine = true,
+                label = { Text("Gemini Key") }
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End
+            ) {
+                TextButton(onClick = onDismiss) { Text("Cancel") }
+                Button(onClick = {
+                    onSaveSettings(
+                        appSettings.copy(
+                            remindersEnabled = remindersEnabled,
+                            reminderIntervalDays = reminderDays,
+                            geminiApiKeyOverride = geminiKey.trim()
+                        )
+                    )
+                    onDismiss()
+                }) {
+                    Text("Save Settings")
+                }
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
+        }
+    }
+}
+
+@Composable
+private fun ReminderCard(appSettings: AppSettings) {
+    val daysSinceMeasure = if (appSettings.lastMeasurementEpochMs <= 0L) {
+        Int.MAX_VALUE
+    } else {
+        val elapsedMs = System.currentTimeMillis() - appSettings.lastMeasurementEpochMs
+        TimeUnit.MILLISECONDS.toDays(elapsedMs).toInt().coerceAtLeast(0)
+    }
+
+    val dueDays = appSettings.reminderIntervalDays.coerceAtLeast(1)
+    val daysLeft = dueDays - daysSinceMeasure
+    val status = if (daysSinceMeasure == Int.MAX_VALUE) {
+        "No measurements saved in this session yet."
+    } else if (daysLeft <= 0) {
+        "Reminder due now. Update your key body measurements today."
+    } else {
+        "Next reminder in $daysLeft day(s)."
+    }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        colors = CardDefaults.cardColors(containerColor = Surface),
+        shape = RoundedCornerShape(2.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Border),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Text("Measurement Reminder", style = MaterialTheme.typography.titleMedium, color = AccentLime)
+            Text("Cadence: every ${appSettings.reminderIntervalDays} days", style = MaterialTheme.typography.bodyMedium, color = TextMuted)
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(status, style = MaterialTheme.typography.bodyMedium)
+        }
+    }
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun GeminiQuickPanel(
@@ -471,7 +662,7 @@ private fun GeminiQuickPanel(
                 Spacer(modifier = Modifier.height(8.dp))
                 Text("Error: $aiError", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.secondary)
                 Text(
-                    "Tip: add GEMINI_API_KEY in your Gradle properties then rebuild.",
+                    "Tip: open Settings (top-right) to paste a Gemini key or set GEMINI_API_KEY in Gradle properties.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = TextMuted
                 )
@@ -484,7 +675,8 @@ private fun GeminiQuickPanel(
 @Composable
 private fun BlueprintScreen(
     measurements: UserMeasurements,
-    onUpdate: (MeasurementField, Double) -> Unit
+    onUpdate: (MeasurementField, Double) -> Unit,
+    onMeasurementSaved: () -> Unit
 ) {
     var selectedField by remember { mutableStateOf<MeasurementField?>(null) }
     var inputText by remember { mutableStateOf("") }
@@ -751,6 +943,7 @@ private fun BlueprintScreen(
                     TextButton(onClick = {
                         inputText.toDoubleOrNull()?.let {
                             onUpdate(field, it)
+                            onMeasurementSaved()
                             reviewedFields = reviewedFields + field
                         }
                         selectedField = null

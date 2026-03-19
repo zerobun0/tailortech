@@ -22,6 +22,12 @@ data class OutfitAdviceResult(
 object GeminiFitAdvisor {
     private val client = OkHttpClient()
     private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
+    @Volatile
+    private var runtimeApiKeyOverride: String = ""
+
+    fun setRuntimeApiKeyOverride(apiKey: String) {
+        runtimeApiKeyOverride = apiKey.trim()
+    }
 
     suspend fun analyzeOutfit(
         measurements: UserMeasurements,
@@ -31,9 +37,9 @@ object GeminiFitAdvisor {
         imageUrl: String?
     ): Result<OutfitAdviceResult> = withContext(Dispatchers.IO) {
         runCatching {
-            val apiKey = BuildConfig.GEMINI_API_KEY
+            val apiKey = runtimeApiKeyOverride.ifBlank { BuildConfig.GEMINI_API_KEY }
             require(apiKey.isNotBlank()) {
-                "Gemini API key missing. Add GEMINI_API_KEY to your Gradle properties."
+                "Gemini API key missing. Add it in Settings or GEMINI_API_KEY in Gradle properties."
             }
 
             val prompt = buildPrompt(

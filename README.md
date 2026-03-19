@@ -19,7 +19,8 @@ TailorTech is an open-source Android app focused on men's body measurements, siz
 - Size engine output for UK/US, EU, and China/Asia sizes.
 - Country selector for "My Country" size mapping (UK, US, DE, FR, IT, CN, JP, KR, RU).
 - Fit insights rules for Drop, Rise alert, and Thigh alert.
-- Gemini Outfit Advisor for clothing fit risk analysis from pasted product text.
+- Gemini Quick AI panel on Dashboard for clothing fit risk analysis.
+- Supports product text paste, optional image URL input, and master prompt modes (Fit Check, Buy Risk, Style Match, Research).
 
 ## Design tokens
 

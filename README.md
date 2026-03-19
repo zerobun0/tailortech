@@ -25,6 +25,7 @@ TailorTech is an open-source Android app for men's body measurements, global siz
 - Fit insights rules for Drop, Rise alert, and Thigh alert.
 - Gemini Quick AI panel on Dashboard for clothing fit risk analysis.
 - Supports product text paste, optional image URL input, and master prompt modes (Fit Check, Buy Risk, Style Match, Research).
+- Includes an AI chat assistant for follow-up fit/sizing questions in-session.
 
 ## Design tokens
 

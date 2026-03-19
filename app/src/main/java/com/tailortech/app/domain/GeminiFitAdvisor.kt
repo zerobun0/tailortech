@@ -29,6 +29,29 @@ object GeminiFitAdvisor {
         runtimeApiKeyOverride = apiKey.trim()
     }
 
+    suspend fun chatAssistant(
+        measurements: UserMeasurements,
+        countryCode: String,
+        history: List<Pair<String, String>>,
+        userMessage: String
+    ): Result<String> = withContext(Dispatchers.IO) {
+        runCatching {
+            val apiKey = runtimeApiKeyOverride.ifBlank { BuildConfig.GEMINI_API_KEY }
+            require(apiKey.isNotBlank()) {
+                "Gemini API key missing. Add it in Settings or GEMINI_API_KEY in Gradle properties."
+            }
+
+            val prompt = buildChatPrompt(
+                m = measurements,
+                countryCode = countryCode,
+                history = history,
+                userMessage = userMessage
+            )
+
+            requestGeminiText(prompt, apiKey)
+        }
+    }
+
     suspend fun analyzeOutfit(
         measurements: UserMeasurements,
         clothingPaste: String,
@@ -49,28 +72,64 @@ object GeminiFitAdvisor {
                 analysisMode = analysisMode,
                 imageUrl = imageUrl
             )
-            val payload = JSONObject().apply {
-                put("contents", JSONArray().put(
-                    JSONObject().apply {
-                        put("parts", JSONArray().put(JSONObject().put("text", prompt)))
-                    }
-                ))
-            }
-
-            val request = Request.Builder()
-                .url("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=$apiKey")
-                .post(payload.toString().toRequestBody(jsonMediaType))
-                .build()
-
-            val responseBody = client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) {
-                    throw IllegalStateException("Gemini request failed: ${response.code}")
-                }
-                response.body?.string().orEmpty()
-            }
-
+            val responseBody = requestGeminiText(prompt, apiKey)
             parseResponse(responseBody)
         }
+    }
+
+    private fun requestGeminiText(prompt: String, apiKey: String): String {
+        val payload = JSONObject().apply {
+            put("contents", JSONArray().put(
+                JSONObject().apply {
+                    put("parts", JSONArray().put(JSONObject().put("text", prompt)))
+                }
+            ))
+        }
+
+        val request = Request.Builder()
+            .url("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=$apiKey")
+            .post(payload.toString().toRequestBody(jsonMediaType))
+            .build()
+
+        val responseBody = client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                throw IllegalStateException("Gemini request failed: ${response.code}")
+            }
+            response.body?.string().orEmpty()
+        }
+
+        val root = JSONObject(responseBody)
+        val candidates = root.optJSONArray("candidates") ?: JSONArray()
+        val first = candidates.optJSONObject(0) ?: throw IllegalStateException("No candidates from Gemini")
+        val parts = first.optJSONObject("content")?.optJSONArray("parts") ?: JSONArray()
+        return parts.optJSONObject(0)?.optString("text").orEmpty()
+    }
+
+    private fun buildChatPrompt(
+        m: UserMeasurements,
+        countryCode: String,
+        history: List<Pair<String, String>>,
+        userMessage: String
+    ): String {
+        val historyText = history.takeLast(8).joinToString("\n") { (role, text) ->
+            "$role: $text"
+        }
+
+        return """
+You are TailorTech AI, a concise menswear fit assistant.
+Give practical clothing fit and size advice based on body measurements and country sizing.
+Do not output JSON. Use plain helpful text in 3-7 short bullet points when possible.
+
+User profile (cm):
+height=${m.heightCm}, neck=${m.neckCm}, chest=${m.chestUpperCm}, waist=${m.waistPantsLevelCm}, hip=${m.hipCm}, thigh=${m.thighWidestCm}, inseam=${m.inseamCm}, shoulder=${m.shoulderToShoulderCm}
+countryCode=$countryCode
+
+Recent conversation:
+${historyText.ifBlank { "none" }}
+
+User message:
+$userMessage
+""".trimIndent()
     }
 
     private fun buildPrompt(
@@ -100,13 +159,7 @@ If imageUrl is present but cannot be fetched, continue using text-only inference
 """.trimIndent()
     }
 
-    private fun parseResponse(raw: String): OutfitAdviceResult {
-        val root = JSONObject(raw)
-        val candidates = root.optJSONArray("candidates") ?: JSONArray()
-        val first = candidates.optJSONObject(0) ?: throw IllegalStateException("No candidates from Gemini")
-        val parts = first.optJSONObject("content")?.optJSONArray("parts") ?: JSONArray()
-        val text = parts.optJSONObject(0)?.optString("text").orEmpty()
-
+    private fun parseResponse(text: String): OutfitAdviceResult {
         val cleaned = text
             .replace("```json", "")
             .replace("```", "")

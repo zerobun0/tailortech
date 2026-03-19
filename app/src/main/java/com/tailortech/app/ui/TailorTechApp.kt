@@ -102,9 +102,6 @@ fun TailorTechApp(viewModel: MainViewModel) {
                     }
                 },
                 actions = {
-                    TextButton(onClick = { showSettingsSheet = true }) {
-                        Text("SETTINGS")
-                    }
                     IconButton(onClick = { showSettingsSheet = true }) {
                         Icon(Icons.Default.Settings, contentDescription = "Settings")
                     }
@@ -545,6 +542,9 @@ private fun GeminiQuickPanel(
     var aiError by remember { mutableStateOf<String?>(null) }
     var aiLoading by remember { mutableStateOf(false) }
     var selectedPrompt by remember { mutableStateOf(geminiMasterPrompts().first()) }
+    var chatInput by remember { mutableStateOf("") }
+    var chatMessages by remember { mutableStateOf(listOf(ChatMessage("assistant", "Ask me anything about fit, sizing, or what to buy."))) }
+    var chatLoading by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     Card(
@@ -669,6 +669,73 @@ private fun GeminiQuickPanel(
                     style = MaterialTheme.typography.bodyMedium,
                     color = TextMuted
                 )
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+            Text("AI Chat Assistant", style = MaterialTheme.typography.titleMedium, color = AccentLime)
+            Text(
+                "Follow-up questions are supported. Chat context is kept in this session.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = TextMuted
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            chatMessages.takeLast(8).forEach { msg ->
+                val tone = if (msg.role == "assistant") AccentLime else MaterialTheme.colorScheme.onSurface
+                Text(
+                    text = if (msg.role == "assistant") "AI: ${msg.text}" else "You: ${msg.text}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = tone,
+                    modifier = Modifier.padding(vertical = 2.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            OutlinedTextField(
+                value = chatInput,
+                onValueChange = { chatInput = it },
+                modifier = Modifier.fillMaxWidth(),
+                minLines = 2,
+                label = { Text("Ask a fit question") }
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Button(
+                onClick = {
+                    val userText = chatInput.trim()
+                    if (userText.isBlank()) return@Button
+
+                    val nextHistory = chatMessages + ChatMessage("user", userText)
+                    chatMessages = nextHistory
+                    chatInput = ""
+                    chatLoading = true
+
+                    scope.launch {
+                        val result = GeminiFitAdvisor.chatAssistant(
+                            measurements = measurements,
+                            countryCode = selectedCountry,
+                            history = nextHistory.map { it.role to it.text },
+                            userMessage = userText
+                        )
+
+                        result
+                            .onSuccess { reply ->
+                                chatMessages = (chatMessages + ChatMessage("assistant", reply.ifBlank { "I could not generate a response yet." })).takeLast(20)
+                            }
+                            .onFailure { err ->
+                                chatMessages = (chatMessages + ChatMessage("assistant", "Error: ${err.message ?: "Chat request failed"}"))
+                            }
+
+                        chatLoading = false
+                    }
+                },
+                enabled = !chatLoading && chatInput.isNotBlank(),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(if (chatLoading) "Thinking..." else "Send Chat Message")
             }
         }
     }
@@ -1106,6 +1173,11 @@ private data class GeminiMasterPrompt(
     val label: String,
     val mode: String,
     val template: String
+)
+
+private data class ChatMessage(
+    val role: String,
+    val text: String
 )
 
 private fun geminiMasterPrompts(): List<GeminiMasterPrompt> {

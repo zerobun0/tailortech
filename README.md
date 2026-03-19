@@ -1,10 +1,10 @@
 # TailorTech
 
-TailorTech is an open-source Android app focused on men's body measurements, size conversion, and fit intelligence.
+TailorTech is an open-source Android app focused on men's body measurements, global size conversion, and fit insights.
 
 ## What is implemented
 
-- Material 3 dark UI with a premium black + neon palette.
+- Material 3 dark UI.
 - Room-backed measurement engine using your full measurement schema.
 - Dual-unit support with centimeter and inch rendering.
 - Calculated metrics:
@@ -16,6 +16,10 @@ TailorTech is an open-source Android app focused on men's body measurements, siz
 - Progress tracking per category and overall session completion.
 - Required/optional badges with expected-range validation hints.
 - Quick-edit list covering all schema measurement points.
+- Settings panel in the top-right app bar for:
+  - unit switching
+  - reminder cadence
+  - Gemini API key override
 - Size engine output for UK/US, EU, and China/Asia sizes.
 - Country selector for "My Country" size mapping (UK, US, DE, FR, IT, CN, JP, KR, RU).
 - Fit insights rules for Drop, Rise alert, and Thigh alert.
@@ -38,11 +42,14 @@ TailorTech is an open-source Android app focused on men's body measurements, siz
 
 ## Gemini setup
 
-Add your Gemini API key to `~/.gradle/gradle.properties` (or project `gradle.properties` for local testing only):
+You can configure Gemini in either of these ways:
+
+- In-app Settings panel (top-right) with Gemini API key override.
+- `~/.gradle/gradle.properties` (or project `gradle.properties` for local testing):
 
 `GEMINI_API_KEY=your_key_here`
 
-Then rebuild the app. The advisor is available inside the Size Insights tab.
+The advisor is available in the Dashboard tab.
 
 ## Structure
 

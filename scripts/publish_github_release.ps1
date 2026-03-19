@@ -2,11 +2,13 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$GithubToken,
     [Parameter(Mandatory = $false)]
-    [string]$Owner = "zerobun",
+    [string]$Owner = "zerobun0",
     [Parameter(Mandatory = $false)]
     [string]$Repo = "tailortech",
     [Parameter(Mandatory = $false)]
-    [string]$Tag = "v1.0.0"
+    [string]$Tag = "v1.0.2",
+    [Parameter(Mandatory = $false)]
+    [string]$ApkPath = "releases/v1.0.2/TailorTech-v1.0.2-debug.apk"
 )
 
 $ErrorActionPreference = "Stop"
@@ -14,11 +16,11 @@ $ErrorActionPreference = "Stop"
 $repoApi = "https://api.github.com/repos/$Owner/$Repo"
 $releaseApi = "https://api.github.com/repos/$Owner/$Repo/releases"
 $remoteUrl = "https://github.com/$Owner/$Repo.git"
-$apkPath = "releases/v1.0.0/TailorTech-v1.0.0-debug.apk"
-$zipPath = "releases/v1.0.0/TailorTech-v1.0.0-release-bundle.zip"
+$apkName = [System.IO.Path]::GetFileName($ApkPath)
+$releaseNotesPath = "RELEASE_NOTES_${Tag}.md"
 
-if (-not (Test-Path $apkPath)) { throw "Missing APK: $apkPath" }
-if (-not (Test-Path $zipPath)) { throw "Missing zip bundle: $zipPath" }
+if (-not (Test-Path $ApkPath)) { throw "Missing APK: $ApkPath" }
+if (-not (Test-Path $releaseNotesPath)) { $releaseNotesPath = "RELEASE_NOTES_v1.0.0.md" }
 
 $headers = @{
     Authorization = "Bearer $GithubToken"
@@ -56,7 +58,7 @@ Write-Host "==> Creating or reusing release $Tag"
 $releaseBody = @{
     tag_name = $Tag
     name = "TailorTech $Tag"
-    body = (Get-Content "RELEASE_NOTES_v1.0.0.md" -Raw)
+    body = (Get-Content $releaseNotesPath -Raw)
     draft = $false
     prerelease = $false
 } | ConvertTo-Json -Depth 4
@@ -69,19 +71,25 @@ try {
 }
 
 $uploadBase = $release.upload_url -replace "\{\?name,label\}", ""
+$existingApk = $release.assets | Where-Object { $_.name -eq $apkName }
+if ($existingApk) {
+    Write-Host "==> Removing existing asset $apkName"
+    $deleteApi = "https://api.github.com/repos/$Owner/$Repo/releases/assets/$($existingApk.id)"
+    Invoke-RestMethod -Method Delete -Uri $deleteApi -Headers $headers | Out-Null
+}
 
 function Upload-Asset([string]$filePath, [string]$name, [string]$contentType) {
     Write-Host "==> Uploading $name"
     $bytes = [System.IO.File]::ReadAllBytes((Resolve-Path $filePath))
-    $uploadUrl = "$uploadBase?name=$name"
+    $uploadUrl = "${uploadBase}?name=$name"
     Invoke-RestMethod -Method Post -Uri $uploadUrl -Headers @{
         Authorization = "Bearer $GithubToken"
         Accept = "application/vnd.github+json"
+        "X-GitHub-Api-Version" = "2022-11-28"
         "Content-Type" = $contentType
     } -Body $bytes | Out-Null
 }
 
-Upload-Asset -filePath $apkPath -name "TailorTech-v1.0.0-debug.apk" -contentType "application/vnd.android.package-archive"
-Upload-Asset -filePath $zipPath -name "TailorTech-v1.0.0-release-bundle.zip" -contentType "application/zip"
+Upload-Asset -filePath $ApkPath -name $apkName -contentType "application/vnd.android.package-archive"
 
 Write-Host "==> Release published: https://github.com/$Owner/$Repo/releases/tag/$Tag"

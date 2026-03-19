@@ -22,9 +22,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoGraph
+import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Straighten
-import androidx.compose.material.icons.filled.ViewInAr
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Button
@@ -102,6 +102,9 @@ fun TailorTechApp(viewModel: MainViewModel) {
                     }
                 },
                 actions = {
+                    TextButton(onClick = { showSettingsSheet = true }) {
+                        Text("SETTINGS")
+                    }
                     IconButton(onClick = { showSettingsSheet = true }) {
                         Icon(Icons.Default.Settings, contentDescription = "Settings")
                     }
@@ -126,7 +129,7 @@ fun TailorTechApp(viewModel: MainViewModel) {
                     selectedCountry = selectedCountry,
                     appSettings = appSettings
                 )
-                TailorTab.BLUEPRINT -> BlueprintScreen(
+                TailorTab.STUDIO -> StudioScreen(
                     measurements,
                     onUpdate = viewModel::updateField,
                     onMeasurementSaved = {
@@ -163,7 +166,7 @@ fun TailorTechApp(viewModel: MainViewModel) {
 private fun TailorTabs(selected: TailorTab, onSelect: (TailorTab) -> Unit) {
     val tabs = listOf(
         TailorTab.DASHBOARD to Icons.Default.AutoGraph,
-        TailorTab.BLUEPRINT to Icons.Default.ViewInAr,
+        TailorTab.STUDIO to Icons.Default.EditNote,
         TailorTab.SIZE_INSIGHTS to Icons.Default.Straighten
     )
 
@@ -673,14 +676,14 @@ private fun GeminiQuickPanel(
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-private fun BlueprintScreen(
+private fun StudioScreen(
     measurements: UserMeasurements,
     onUpdate: (MeasurementField, Double) -> Unit,
     onMeasurementSaved: () -> Unit
 ) {
     var selectedField by remember { mutableStateOf<MeasurementField?>(null) }
     var inputText by remember { mutableStateOf("") }
-    val groupedPrompts = remember { blueprintPromptsByGroup() }
+    val groupedPrompts = remember { studioPromptsByGroup() }
     var activeGroup by remember { mutableStateOf(groupedPrompts.keys.first()) }
     var studioMode by remember { mutableStateOf(StudioMode.BROWSE) }
     var guidedIndex by remember { mutableStateOf(0) }
@@ -1135,7 +1138,7 @@ private fun MeasurementPrompt.isInExpectedRange(value: Double): Boolean {
     return value in range
 }
 
-private fun blueprintPromptsByGroup(): Map<String, List<MeasurementPrompt>> {
+private fun studioPromptsByGroup(): Map<String, List<MeasurementPrompt>> {
     return linkedMapOf(
         "Head and Torso" to listOf(
             MeasurementPrompt("A", MeasurementField.NECK, "Wrap tape around the base of neck, level and snug.", expectedRangeCm = 30.0..50.0),

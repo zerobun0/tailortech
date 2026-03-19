@@ -1,8 +1,8 @@
 # TailorTech
 
-TailorTech is an open-source Android app focused on men's body measurements, global size conversion, and fit insights.
+TailorTech is an open-source Android app for men's body measurements, global size mapping, and fit risk guidance.
 
-## What is implemented
+## Current app features
 
 - Material 3 dark UI.
 - Room-backed measurement engine using your full measurement schema.
@@ -11,14 +11,14 @@ TailorTech is an open-source Android app focused on men's body measurements, glo
   - Inseam = Inner Thigh to Knee + Knee to Ankle
   - Total Arm Length = Shoulder to Elbow + Elbow to Wrist
 - Dashboard with horizontal stats bar: Height, Chest, Waist, Hip, Inseam.
-- Measurement Studio tab replacing silhouette blueprint with guided categories.
+- Measurement Studio tab with guided categories (no silhouette view).
 - Browse and Guided Session modes for measurement capture.
 - Progress tracking per category and overall session completion.
 - Required/optional badges with expected-range validation hints.
 - Quick-edit list covering all schema measurement points.
-- Settings panel in the top-right app bar for:
-  - unit switching
-  - reminder cadence
+- Settings panel in the top-right app bar:
+  - unit switching (cm/in)
+  - measurement reminder cadence
   - Gemini API key override
 - Size engine output for UK/US, EU, and China/Asia sizes.
 - Country selector for "My Country" size mapping (UK, US, DE, FR, IT, CN, JP, KR, RU).
@@ -35,7 +35,7 @@ TailorTech is an open-source Android app focused on men's body measurements, glo
 - Secondary Accent: #ff6b35
 - Typography: Syne and DM Mono included in app resources.
 
-## Project notes
+## Build notes
 
 - Gradle wrapper is included and verified with `:app:assembleDebug`.
 - Build requires Android SDK path in `local.properties`.
@@ -50,6 +50,11 @@ You can configure Gemini in either of these ways:
 `GEMINI_API_KEY=your_key_here`
 
 The advisor is available in the Dashboard tab.
+
+## Release policy
+
+- GitHub releases publish source plus APK only.
+- Bundle zip artifacts are not used.
 
 ## Structure
 

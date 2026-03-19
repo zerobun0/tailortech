@@ -6,9 +6,9 @@ param(
     [Parameter(Mandatory = $false)]
     [string]$Repo = "tailortech",
     [Parameter(Mandatory = $false)]
-    [string]$Tag = "v1.0.2",
+    [string]$Tag = "v1.0.4",
     [Parameter(Mandatory = $false)]
-    [string]$ApkPath = "releases/v1.0.2/TailorTech-v1.0.2-debug.apk"
+    [string]$ApkPath = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -16,6 +16,10 @@ $ErrorActionPreference = "Stop"
 $repoApi = "https://api.github.com/repos/$Owner/$Repo"
 $releaseApi = "https://api.github.com/repos/$Owner/$Repo/releases"
 $remoteUrl = "https://github.com/$Owner/$Repo.git"
+$normalizedTag = $Tag.TrimStart('v', 'V')
+if ([string]::IsNullOrWhiteSpace($ApkPath)) {
+    $ApkPath = "releases/v$normalizedTag/TailorTech-v$normalizedTag-debug.apk"
+}
 $apkName = [System.IO.Path]::GetFileName($ApkPath)
 $releaseNotesPath = "RELEASE_NOTES_${Tag}.md"
 

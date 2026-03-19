@@ -14,7 +14,7 @@ import kotlinx.coroutines.launch
 
 enum class TailorTab {
     DASHBOARD,
-    BLUEPRINT,
+    STUDIO,
     SIZE_INSIGHTS
 }
 

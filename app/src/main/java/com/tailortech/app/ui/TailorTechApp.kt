@@ -108,7 +108,10 @@ fun TailorTechApp(viewModel: MainViewModel) {
             )
 
             when (selectedTab) {
-                TailorTab.DASHBOARD -> DashboardScreen(measurements)
+                TailorTab.DASHBOARD -> DashboardScreen(
+                    measurements = measurements,
+                    selectedCountry = selectedCountry
+                )
                 TailorTab.BLUEPRINT -> BlueprintScreen(measurements, onUpdate = viewModel::updateField)
                 TailorTab.SIZE_INSIGHTS -> SizeInsightsScreen(
                     measurements = measurements,
@@ -148,7 +151,10 @@ private fun TailorTabs(selected: TailorTab, onSelect: (TailorTab) -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun DashboardScreen(measurements: UserMeasurements) {
+private fun DashboardScreen(
+    measurements: UserMeasurements,
+    selectedCountry: String
+) {
     val scroll = rememberScrollState()
     var selectedStat by remember { mutableStateOf<StatDetail?>(null) }
     val sizes = GlobalSizeAdvisor.advise(measurements)
@@ -253,6 +259,11 @@ private fun DashboardScreen(measurements: UserMeasurements) {
                 "Drop (Chest - Waist)" to displayBoth(measurements.dropCm)
             )
         )
+
+        GeminiQuickPanel(
+            measurements = measurements,
+            selectedCountry = selectedCountry
+        )
     }
 
     selectedStat?.let { stat ->
@@ -323,6 +334,147 @@ private fun DataSection(title: String, rows: List<Pair<String, String>>) {
             ) {
                 Text(label, style = MaterialTheme.typography.bodyMedium, color = TextMuted)
                 Text(value, style = MaterialTheme.typography.bodyLarge)
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun GeminiQuickPanel(
+    measurements: UserMeasurements,
+    selectedCountry: String
+) {
+    var clothingPaste by remember { mutableStateOf("") }
+    var imageUrl by remember { mutableStateOf("") }
+    var aiResult by remember { mutableStateOf<OutfitAdviceResult?>(null) }
+    var aiError by remember { mutableStateOf<String?>(null) }
+    var aiLoading by remember { mutableStateOf(false) }
+    var selectedPrompt by remember { mutableStateOf(geminiMasterPrompts().first()) }
+    val scope = rememberCoroutineScope()
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        colors = CardDefaults.cardColors(containerColor = Surface),
+        shape = RoundedCornerShape(2.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Border),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Text("Quick AI Fit Check", style = MaterialTheme.typography.titleMedium, color = AccentLime)
+            Text(
+                "Paste clothing details and optional image link for instant fit + risk guidance.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = TextMuted
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                geminiMasterPrompts().forEach { prompt ->
+                    FilterChip(
+                        selected = selectedPrompt.mode == prompt.mode,
+                        onClick = { selectedPrompt = prompt },
+                        label = { Text(prompt.label) }
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text(selectedPrompt.template, style = MaterialTheme.typography.bodyMedium, color = TextMuted)
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            OutlinedTextField(
+                value = clothingPaste,
+                onValueChange = { clothingPaste = it },
+                modifier = Modifier.fillMaxWidth(),
+                minLines = 4,
+                label = { Text("Product details / size chart text") }
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            OutlinedTextField(
+                value = imageUrl,
+                onValueChange = { imageUrl = it },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                label = { Text("Optional image URL") }
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Button(
+                onClick = {
+                    aiLoading = true
+                    aiError = null
+                    aiResult = null
+
+                    val mergedText = buildString {
+                        append(selectedPrompt.template)
+                        append("\n\n")
+                        append(clothingPaste)
+                    }
+
+                    scope.launch {
+                        val result = GeminiFitAdvisor.analyzeOutfit(
+                            measurements = measurements,
+                            clothingPaste = mergedText,
+                            countryCode = selectedCountry,
+                            analysisMode = selectedPrompt.mode,
+                            imageUrl = imageUrl.ifBlank { null }
+                        )
+
+                        result
+                            .onSuccess { aiResult = it }
+                            .onFailure { aiError = it.message ?: "Gemini analysis failed" }
+                        aiLoading = false
+                    }
+                },
+                enabled = !aiLoading && clothingPaste.isNotBlank(),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(if (aiLoading) "Analyzing..." else "Run Quick Fit Analysis")
+            }
+
+            if (aiResult != null) {
+                val result = aiResult!!
+                Spacer(modifier = Modifier.height(10.dp))
+                Text("Recommendation: ${result.recommendation}", style = MaterialTheme.typography.bodyLarge, color = AccentLime)
+                Text(result.summary, style = MaterialTheme.typography.bodyMedium)
+                Spacer(modifier = Modifier.height(6.dp))
+                Text("Risk Score: ${result.riskScore}/100", style = MaterialTheme.typography.bodyMedium)
+                LinearProgressIndicator(
+                    progress = { result.riskScore / 100f },
+                    modifier = Modifier.fillMaxWidth(),
+                    color = if (result.riskScore >= 70) MaterialTheme.colorScheme.secondary else AccentLime,
+                    trackColor = Surface2
+                )
+
+                if (result.risks.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("Risks", style = MaterialTheme.typography.titleMedium)
+                    result.risks.forEach { Text("- $it", style = MaterialTheme.typography.bodyMedium, color = TextMuted) }
+                }
+                if (result.fitNotes.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("Fit Notes", style = MaterialTheme.typography.titleMedium)
+                    result.fitNotes.forEach { Text("- $it", style = MaterialTheme.typography.bodyMedium, color = TextMuted) }
+                }
+            }
+
+            if (aiError != null) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text("Error: $aiError", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.secondary)
+                Text(
+                    "Tip: add GEMINI_API_KEY in your Gradle properties then rebuild.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextMuted
+                )
             }
         }
     }
@@ -623,11 +775,6 @@ private fun SizeInsightsScreen(
     val insights = FitInsightsEngine.buildInsights(measurements)
     val activeCountry = profile.sizeForCountry(selectedCountry)
     var expanded by remember { mutableStateOf(false) }
-    var clothingPaste by remember { mutableStateOf("") }
-    var aiResult by remember { mutableStateOf<OutfitAdviceResult?>(null) }
-    var aiError by remember { mutableStateOf<String?>(null) }
-    var aiLoading by remember { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
 
     Column(
         modifier = Modifier
@@ -716,95 +863,6 @@ private fun SizeInsightsScreen(
             rows = insights.map { it.title to it.detail }
         )
 
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 8.dp),
-            colors = CardDefaults.cardColors(containerColor = Surface),
-            shape = RoundedCornerShape(2.dp),
-            border = androidx.compose.foundation.BorderStroke(1.dp, Border),
-            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
-        ) {
-            Column(modifier = Modifier.padding(12.dp)) {
-                Text("Gemini Outfit Advisor", style = MaterialTheme.typography.titleMedium, color = AccentLime)
-                Text(
-                    "Paste product text, brand notes, and sizing chart snippets to estimate fit risk.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = TextMuted
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                OutlinedTextField(
-                    value = clothingPaste,
-                    onValueChange = { clothingPaste = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    minLines = 5,
-                    label = { Text("Clothing details paste") }
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Button(
-                    onClick = {
-                        aiLoading = true
-                        aiError = null
-                        aiResult = null
-                        scope.launch {
-                            val result = GeminiFitAdvisor.analyzeOutfit(
-                                measurements = measurements,
-                                clothingPaste = clothingPaste,
-                                countryCode = selectedCountry
-                            )
-                            result
-                                .onSuccess { aiResult = it }
-                                .onFailure { aiError = it.message ?: "Gemini analysis failed" }
-                            aiLoading = false
-                        }
-                    },
-                    enabled = !aiLoading && clothingPaste.isNotBlank(),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(if (aiLoading) "Analyzing..." else "Analyze Fit Risk")
-                }
-
-                if (aiResult != null) {
-                    val result = aiResult!!
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Text("Recommendation: ${result.recommendation}", style = MaterialTheme.typography.bodyLarge, color = AccentLime)
-                    Text(result.summary, style = MaterialTheme.typography.bodyMedium)
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text("Risk Score: ${result.riskScore}/100", style = MaterialTheme.typography.bodyMedium)
-                    LinearProgressIndicator(
-                        progress = { result.riskScore / 100f },
-                        modifier = Modifier.fillMaxWidth(),
-                        color = if (result.riskScore >= 70) MaterialTheme.colorScheme.secondary else AccentLime,
-                        trackColor = Surface2
-                    )
-
-                    if (result.risks.isNotEmpty()) {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text("Risks", style = MaterialTheme.typography.titleMedium)
-                        result.risks.forEach { Text("- $it", style = MaterialTheme.typography.bodyMedium, color = TextMuted) }
-                    }
-                    if (result.fitNotes.isNotEmpty()) {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text("Fit Notes", style = MaterialTheme.typography.titleMedium)
-                        result.fitNotes.forEach { Text("- $it", style = MaterialTheme.typography.bodyMedium, color = TextMuted) }
-                    }
-                }
-
-                if (aiError != null) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text("Error: $aiError", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.secondary)
-                    Text(
-                        "Tip: add GEMINI_API_KEY in your Gradle properties then rebuild.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = TextMuted
-                    )
-                }
-            }
-        }
     }
 }
 
@@ -846,6 +904,37 @@ private data class MeasurementPrompt(
 private enum class StudioMode {
     BROWSE,
     GUIDED
+}
+
+private data class GeminiMasterPrompt(
+    val label: String,
+    val mode: String,
+    val template: String
+)
+
+private fun geminiMasterPrompts(): List<GeminiMasterPrompt> {
+    return listOf(
+        GeminiMasterPrompt(
+            label = "Fit Check",
+            mode = "FIT_CHECK",
+            template = "Evaluate exact fit based on chest/waist/hip/inseam proportions. Flag tight zones and suggest best size choice."
+        ),
+        GeminiMasterPrompt(
+            label = "Buy Risk",
+            mode = "BUY_RISK",
+            template = "Estimate purchase risk from inconsistent size charts, unknown stretch, brand sizing drift, and return difficulty."
+        ),
+        GeminiMasterPrompt(
+            label = "Style Match",
+            mode = "STYLE_MATCH",
+            template = "Assess if garment cut (slim/regular/relaxed/oversized) suits this body profile and suggest better alternatives."
+        ),
+        GeminiMasterPrompt(
+            label = "Research",
+            mode = "MARKET_RESEARCH",
+            template = "Use details to infer likely brand behavior, fabric quirks, and where fit failures happen most for similar items."
+        )
+    )
 }
 
 private fun MeasurementPrompt.isInExpectedRange(value: Double): Boolean {

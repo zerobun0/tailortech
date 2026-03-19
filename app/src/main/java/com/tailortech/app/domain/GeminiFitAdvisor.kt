@@ -26,7 +26,9 @@ object GeminiFitAdvisor {
     suspend fun analyzeOutfit(
         measurements: UserMeasurements,
         clothingPaste: String,
-        countryCode: String
+        countryCode: String,
+        analysisMode: String,
+        imageUrl: String?
     ): Result<OutfitAdviceResult> = withContext(Dispatchers.IO) {
         runCatching {
             val apiKey = BuildConfig.GEMINI_API_KEY
@@ -34,7 +36,13 @@ object GeminiFitAdvisor {
                 "Gemini API key missing. Add GEMINI_API_KEY to your Gradle properties."
             }
 
-            val prompt = buildPrompt(measurements, clothingPaste, countryCode)
+            val prompt = buildPrompt(
+                m = measurements,
+                clothingPaste = clothingPaste,
+                countryCode = countryCode,
+                analysisMode = analysisMode,
+                imageUrl = imageUrl
+            )
             val payload = JSONObject().apply {
                 put("contents", JSONArray().put(
                     JSONObject().apply {
@@ -62,7 +70,9 @@ object GeminiFitAdvisor {
     private fun buildPrompt(
         m: UserMeasurements,
         clothingPaste: String,
-        countryCode: String
+        countryCode: String,
+        analysisMode: String,
+        imageUrl: String?
     ): String {
         return """
 Analyze clothing fit risk for this user. Return strict JSON only with keys:
@@ -74,9 +84,13 @@ summary, recommendation, riskScore, risks, fitNotes.
 User profile (cm):
 height=${m.heightCm}, neck=${m.neckCm}, chest=${m.chestUpperCm}, waist=${m.waistPantsLevelCm}, hip=${m.hipCm}, thigh=${m.thighWidestCm}, inseam=${m.inseamCm}, footLength=${m.footLengthCm}, shoulder=${m.shoulderToShoulderCm}
 countryCode=$countryCode
+analysisMode=$analysisMode
+imageUrl=${imageUrl ?: "none"}
 
 Clothing text pasted by user:
 $clothingPaste
+
+If imageUrl is present but cannot be fetched, continue using text-only inference and mention confidence impact in risks.
 """.trimIndent()
     }
 

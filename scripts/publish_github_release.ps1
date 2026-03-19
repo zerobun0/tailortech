@@ -82,10 +82,10 @@ if ($existingApk) {
     Invoke-RestMethod -Method Delete -Uri $deleteApi -Headers $headers | Out-Null
 }
 
-function Upload-Asset([string]$filePath, [string]$name, [string]$contentType) {
+function Send-ReleaseAsset([string]$filePath, [string]$name, [string]$contentType, [string]$uploadBaseUrl) {
     Write-Host "==> Uploading $name"
     $bytes = [System.IO.File]::ReadAllBytes((Resolve-Path $filePath))
-    $uploadUrl = "${uploadBase}?name=$name"
+    $uploadUrl = "${uploadBaseUrl}?name=$name"
     Invoke-RestMethod -Method Post -Uri $uploadUrl -Headers @{
         Authorization = "Bearer $GithubToken"
         Accept = "application/vnd.github+json"
@@ -94,6 +94,6 @@ function Upload-Asset([string]$filePath, [string]$name, [string]$contentType) {
     } -Body $bytes | Out-Null
 }
 
-Upload-Asset -filePath $ApkPath -name $apkName -contentType "application/vnd.android.package-archive"
+Send-ReleaseAsset -filePath $ApkPath -name $apkName -contentType "application/vnd.android.package-archive" -uploadBaseUrl $uploadBase
 
 Write-Host "==> Release published: https://github.com/$Owner/$Repo/releases/tag/$Tag"

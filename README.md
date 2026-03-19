@@ -13,6 +13,12 @@ TailorTech is an open-source Android app for men's body measurements, global siz
 - Dashboard with horizontal stats bar: Height, Chest, Waist, Hip, Inseam.
 - Measurement Studio tab with guided categories (no silhouette view).
 - Browse and Guided Session modes for measurement capture.
+- Smart Import Assistant in Studio:
+  - paste raw measurement text
+  - AI/local parsing to detect values automatically
+  - flags uncertain fields for double-check
+  - shows missing required fields and completion percentage
+  - one-tap import of detected values
 - Progress tracking per category and overall session completion.
 - Required/optional badges with expected-range validation hints.
 - Quick-edit list covering all schema measurement points.
@@ -56,6 +62,10 @@ The advisor is available in the Dashboard tab.
 
 - GitHub releases publish source plus APK only.
 - Bundle zip artifacts are not used.
+
+## First run behavior
+
+- New installs start with empty measurement values (no prefilled personal data).
 
 ## Structure
 

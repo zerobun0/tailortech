@@ -19,6 +19,13 @@ data class OutfitAdviceResult(
     val fitNotes: List<String>
 )
 
+data class MeasurementExtractionResult(
+    val valuesByKey: Map<String, Double>,
+    val uncertainKeys: List<String>,
+    val missingKeys: List<String>,
+    val notes: List<String>
+)
+
 object GeminiFitAdvisor {
     private val client = OkHttpClient()
     private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
@@ -74,6 +81,88 @@ object GeminiFitAdvisor {
             )
             val responseBody = requestGeminiText(prompt, apiKey)
             parseResponse(responseBody)
+        }
+    }
+
+    suspend fun extractMeasurementsFromText(rawText: String): Result<MeasurementExtractionResult> = withContext(Dispatchers.IO) {
+        runCatching {
+            val apiKey = runtimeApiKeyOverride.ifBlank { BuildConfig.GEMINI_API_KEY }
+            require(apiKey.isNotBlank()) {
+                "Gemini API key missing. Add it in Settings or GEMINI_API_KEY in Gradle properties."
+            }
+
+            val prompt = """
+Extract body measurements from user text and return strict JSON only.
+Rules:
+- Convert all values to centimeters.
+- Use null when a value is missing or not inferable.
+- If confidence is low for a key, put key in uncertain list.
+
+Return JSON shape:
+{
+  "values": {
+    "height": number|null,
+    "neck": number|null,
+    "headFrontToBack": number|null,
+    "chestUpper": number|null,
+    "chestLower": number|null,
+    "waistNatural": number|null,
+    "waistPantsLevel": number|null,
+    "hip": number|null,
+    "shoulderToShoulder": number|null,
+    "neckToShoulder": number|null,
+    "neckToWaist": number|null,
+    "armscye": number|null,
+    "rise": number|null,
+    "bicepFlexed": number|null,
+    "bicepRelaxed": number|null,
+    "shoulderToElbow": number|null,
+    "elbowToWrist": number|null,
+    "wrist": number|null,
+    "wristToMiddleFinger": number|null,
+    "thighWidest": number|null,
+    "knee": number|null,
+    "calfWidest": number|null,
+    "ankle": number|null,
+    "innerThighToKnee": number|null,
+    "kneeToAnkle": number|null,
+    "outerThigh": number|null,
+    "footLength": number|null,
+    "footWidth": number|null
+  },
+  "uncertain": ["key"],
+  "missing": ["key"],
+  "notes": ["short note"]
+}
+
+User text:
+$rawText
+""".trimIndent()
+
+            val raw = requestGeminiText(prompt, apiKey)
+            val cleaned = raw
+                .replace("```json", "")
+                .replace("```", "")
+                .trim()
+
+            val root = JSONObject(cleaned)
+            val valuesObj = root.optJSONObject("values") ?: JSONObject()
+            val valueMap = buildMap {
+                val keys = valuesObj.keys()
+                while (keys.hasNext()) {
+                    val key = keys.next()
+                    if (!valuesObj.isNull(key)) {
+                        put(key, valuesObj.optDouble(key))
+                    }
+                }
+            }
+
+            MeasurementExtractionResult(
+                valuesByKey = valueMap,
+                uncertainKeys = root.optJSONArray("uncertain").toStringList(),
+                missingKeys = root.optJSONArray("missing").toStringList(),
+                notes = root.optJSONArray("notes").toStringList()
+            )
         }
     }
 

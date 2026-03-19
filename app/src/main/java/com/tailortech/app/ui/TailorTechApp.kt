@@ -69,6 +69,7 @@ import com.tailortech.app.domain.AppSettings
 import com.tailortech.app.domain.AppSettingsStore
 import com.tailortech.app.domain.GeminiFitAdvisor
 import com.tailortech.app.domain.GlobalSizeAdvisor
+import com.tailortech.app.domain.MeasurementExtractionResult
 import com.tailortech.app.domain.OutfitAdviceResult
 import com.tailortech.app.domain.sizeForCountry
 import com.tailortech.app.ui.theme.AccentLime
@@ -755,6 +756,12 @@ private fun StudioScreen(
     var studioMode by remember { mutableStateOf(StudioMode.BROWSE) }
     var guidedIndex by remember { mutableStateOf(0) }
     var reviewedFields by remember { mutableStateOf(setOf<MeasurementField>()) }
+    var importText by remember { mutableStateOf("") }
+    var importResult by remember { mutableStateOf<ImportAnalysisResult?>(null) }
+    var importBusy by remember { mutableStateOf(false) }
+    var importError by remember { mutableStateOf<String?>(null) }
+    var confirmUncertain by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
 
     val allPrompts = remember(groupedPrompts) { groupedPrompts.values.flatten() }
     val totalCount = allPrompts.size.coerceAtLeast(1)
@@ -789,6 +796,141 @@ private fun StudioScreen(
             color = AccentLime,
             trackColor = Surface2
         )
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        Card(
+            modifier = Modifier
+                .fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = Surface),
+            shape = RoundedCornerShape(2.dp),
+            border = androidx.compose.foundation.BorderStroke(1.dp, Border),
+            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+        ) {
+            Column(modifier = Modifier.padding(12.dp)) {
+                Text("Smart Import Assistant", style = MaterialTheme.typography.titleMedium, color = AccentLime)
+                Text(
+                    "Paste your measurements in natural text. AI will detect values, flag uncertain fields, and show what is missing.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextMuted
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                OutlinedTextField(
+                    value = importText,
+                    onValueChange = { importText = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 4,
+                    label = { Text("Paste measurements text") }
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Button(
+                    onClick = {
+                        importBusy = true
+                        importError = null
+                        importResult = null
+                        confirmUncertain = false
+
+                        scope.launch {
+                            val requiredFields = studioPromptsByGroup().values
+                                .flatten()
+                                .filter { it.required }
+                                .map { it.field }
+                                .toSet()
+
+                            val localResult = analyzeImportTextLocally(importText, requiredFields)
+                            val geminiResult = GeminiFitAdvisor.extractMeasurementsFromText(importText)
+
+                            importResult = geminiResult
+                                .map { mergeImportResults(localResult, it, requiredFields) }
+                                .getOrElse { localResult.copy(notes = localResult.notes + "AI parser unavailable: ${it.message ?: "using local parsing"}") }
+
+                            importBusy = false
+                        }
+                    },
+                    enabled = !importBusy && importText.isNotBlank(),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(if (importBusy) "Analyzing..." else "Analyze Import")
+                }
+
+                if (importError != null) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("Error: $importError", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.secondary)
+                }
+
+                importResult?.let { result ->
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Text(
+                        "Detected ${result.detectedValues.size} fields • ${result.requiredCompletionPercent}% required complete",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    LinearProgressIndicator(
+                        progress = { result.requiredCompletionPercent / 100f },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 6.dp),
+                        color = AccentLime,
+                        trackColor = Surface2
+                    )
+
+                    if (result.missingRequired.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("Missing required", style = MaterialTheme.typography.titleMedium)
+                        result.missingRequired.forEach { field ->
+                            Text("- ${field.label}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.secondary)
+                        }
+                    }
+
+                    if (result.uncertainFields.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("Needs double-check", style = MaterialTheme.typography.titleMedium)
+                        result.uncertainFields.forEach { field ->
+                            val value = result.detectedValues[field]
+                            Text("- ${field.label}: ${value?.round1() ?: 0.0} cm", style = MaterialTheme.typography.bodyMedium, color = TextMuted)
+                        }
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 6.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("I confirm uncertain fields are correct", style = MaterialTheme.typography.bodyMedium)
+                            Switch(checked = confirmUncertain, onCheckedChange = { confirmUncertain = it })
+                        }
+                    }
+
+                    if (result.notes.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        result.notes.take(3).forEach {
+                            Text("- $it", style = MaterialTheme.typography.bodySmall, color = TextMuted)
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Button(
+                        onClick = {
+                            result.detectedValues.forEach { (field, valueCm) ->
+                                onUpdate(field, valueCm)
+                                reviewedFields = reviewedFields + field
+                            }
+                            onMeasurementSaved()
+                        },
+                        enabled = result.detectedValues.isNotEmpty() && (result.uncertainFields.isEmpty() || confirmUncertain),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Import ${result.detectedValues.size} Measurements")
+                    }
+                }
+            }
+        }
 
         Spacer(modifier = Modifier.height(10.dp))
 
@@ -1180,6 +1322,14 @@ private data class ChatMessage(
     val text: String
 )
 
+private data class ImportAnalysisResult(
+    val detectedValues: Map<MeasurementField, Double>,
+    val uncertainFields: Set<MeasurementField>,
+    val missingRequired: List<MeasurementField>,
+    val requiredCompletionPercent: Int,
+    val notes: List<String>
+)
+
 private fun geminiMasterPrompts(): List<GeminiMasterPrompt> {
     return listOf(
         GeminiMasterPrompt(
@@ -1259,6 +1409,7 @@ private fun BadgeText(label: String, color: androidx.compose.ui.graphics.Color) 
 }
 
 private fun displayValue(cm: Double, unitSystem: UnitSystem): String {
+    if (cm <= 0.0) return "--"
     return if (unitSystem == UnitSystem.CM) {
         "${cm.round1()}"
     } else {
@@ -1271,6 +1422,7 @@ private fun unitLabel(unitSystem: UnitSystem): String {
 }
 
 private fun displayBoth(cm: Double): String {
+    if (cm <= 0.0) return "--"
     return "${cm.round1()} cm / ${cm.toInches().round1()} in"
 }
 
@@ -1305,4 +1457,147 @@ private fun currentFieldValue(measurements: UserMeasurements, field: Measurement
         MeasurementField.RISE -> measurements.riseCrotchCm
         MeasurementField.THIGH_WIDEST -> measurements.thighWidestCm
     }
+}
+
+private fun analyzeImportTextLocally(
+    rawText: String,
+    requiredFields: Set<MeasurementField>
+): ImportAnalysisResult {
+    val text = rawText.lowercase()
+    val detected = mutableMapOf<MeasurementField, Double>()
+    val uncertain = mutableSetOf<MeasurementField>()
+
+    for ((field, aliases) in importAliases()) {
+        var selected: Double? = null
+        var count = 0
+
+        for (alias in aliases) {
+            val pattern = Regex("$alias[^0-9]{0,20}(\\d{1,3}(?:\\.\\d+)?)\\s*(cm|in|inch|inches)?")
+            for (match in pattern.findAll(text)) {
+                count += 1
+                val number = match.groupValues[1].toDoubleOrNull()
+                if (number == null) continue
+                val unit = match.groupValues[2]
+                val valueCm = if (unit.startsWith("in")) number * 2.54 else number
+                selected = valueCm
+                if (unit.isBlank()) uncertain += field
+            }
+        }
+
+        if (selected != null) {
+            detected[field] = selected
+        }
+        if (count > 1) {
+            uncertain += field
+        }
+    }
+
+    val requiredDetected = requiredFields.count { detected.containsKey(it) }
+    val completion = if (requiredFields.isEmpty()) 100 else ((requiredDetected * 100f) / requiredFields.size).toInt()
+
+    return ImportAnalysisResult(
+        detectedValues = detected,
+        uncertainFields = uncertain,
+        missingRequired = requiredFields.filterNot { detected.containsKey(it) },
+        requiredCompletionPercent = completion.coerceIn(0, 100),
+        notes = listOf("Local parser matched common measurement labels.")
+    )
+}
+
+private fun mergeImportResults(
+    local: ImportAnalysisResult,
+    gemini: MeasurementExtractionResult,
+    requiredFields: Set<MeasurementField>
+): ImportAnalysisResult {
+    val geminiMapped = gemini.valuesByKey.mapNotNull { (key, value) ->
+        importKeyToField()[key]?.let { it to value }
+    }.toMap()
+
+    val merged = local.detectedValues.toMutableMap()
+    geminiMapped.forEach { (field, value) ->
+        merged[field] = value
+    }
+
+    val uncertain = local.uncertainFields.toMutableSet()
+    gemini.uncertainKeys.mapNotNull { importKeyToField()[it] }.forEach { uncertain += it }
+
+    val requiredDetected = requiredFields.count { merged.containsKey(it) }
+    val completion = if (requiredFields.isEmpty()) 100 else ((requiredDetected * 100f) / requiredFields.size).toInt()
+
+    val missingFromGemini = gemini.missingKeys.mapNotNull { importKeyToField()[it] }
+    val missingRequired = requiredFields.filterNot { merged.containsKey(it) }
+
+    return ImportAnalysisResult(
+        detectedValues = merged,
+        uncertainFields = uncertain,
+        missingRequired = (missingRequired + missingFromGemini).distinct(),
+        requiredCompletionPercent = completion.coerceIn(0, 100),
+        notes = (local.notes + gemini.notes).distinct()
+    )
+}
+
+private fun importAliases(): Map<MeasurementField, List<String>> {
+    return mapOf(
+        MeasurementField.HEIGHT to listOf("height", "stature"),
+        MeasurementField.NECK to listOf("neck"),
+        MeasurementField.HEAD_FRONT_TO_BACK to listOf("head front", "head length", "head front to back"),
+        MeasurementField.CHEST_UPPER to listOf("chest", "chest upper", "bust"),
+        MeasurementField.CHEST_LOWER to listOf("chest lower", "under chest", "underbust"),
+        MeasurementField.WAIST_NATURAL to listOf("waist natural", "natural waist"),
+        MeasurementField.WAIST_PANTS to listOf("waist pants", "pants waist", "waist level"),
+        MeasurementField.HIP to listOf("hip", "hips"),
+        MeasurementField.SHOULDER_TO_SHOULDER to listOf("shoulder to shoulder", "shoulder width"),
+        MeasurementField.NECK_TO_SHOULDER to listOf("neck to shoulder"),
+        MeasurementField.NECK_TO_WAIST to listOf("neck to waist"),
+        MeasurementField.ARMSCYE to listOf("armscye", "armhole"),
+        MeasurementField.RISE to listOf("rise", "crotch rise"),
+        MeasurementField.BICEP_FLEXED to listOf("bicep flexed", "flexed bicep"),
+        MeasurementField.BICEP_RELAXED to listOf("bicep relaxed", "relaxed bicep"),
+        MeasurementField.SHOULDER_TO_ELBOW to listOf("shoulder to elbow"),
+        MeasurementField.ELBOW_TO_WRIST to listOf("elbow to wrist"),
+        MeasurementField.WRIST to listOf("wrist"),
+        MeasurementField.WRIST_TO_MIDDLE_FINGER to listOf("wrist to middle finger", "hand length"),
+        MeasurementField.THIGH_WIDEST to listOf("thigh", "thigh widest"),
+        MeasurementField.KNEE to listOf("knee"),
+        MeasurementField.CALF_WIDEST to listOf("calf", "calf widest"),
+        MeasurementField.ANKLE to listOf("ankle"),
+        MeasurementField.INNER_THIGH_TO_KNEE to listOf("inner thigh to knee", "inseam upper"),
+        MeasurementField.KNEE_TO_ANKLE to listOf("knee to ankle", "inseam lower"),
+        MeasurementField.OUTER_THIGH to listOf("outer thigh", "outseam thigh"),
+        MeasurementField.FOOT_LENGTH to listOf("foot length"),
+        MeasurementField.FOOT_WIDTH to listOf("foot width")
+    )
+}
+
+private fun importKeyToField(): Map<String, MeasurementField> {
+    return mapOf(
+        "height" to MeasurementField.HEIGHT,
+        "neck" to MeasurementField.NECK,
+        "headFrontToBack" to MeasurementField.HEAD_FRONT_TO_BACK,
+        "chestUpper" to MeasurementField.CHEST_UPPER,
+        "chestLower" to MeasurementField.CHEST_LOWER,
+        "waistNatural" to MeasurementField.WAIST_NATURAL,
+        "waistPantsLevel" to MeasurementField.WAIST_PANTS,
+        "hip" to MeasurementField.HIP,
+        "shoulderToShoulder" to MeasurementField.SHOULDER_TO_SHOULDER,
+        "neckToShoulder" to MeasurementField.NECK_TO_SHOULDER,
+        "neckToWaist" to MeasurementField.NECK_TO_WAIST,
+        "armscye" to MeasurementField.ARMSCYE,
+        "rise" to MeasurementField.RISE,
+        "bicepFlexed" to MeasurementField.BICEP_FLEXED,
+        "bicepRelaxed" to MeasurementField.BICEP_RELAXED,
+        "shoulderToElbow" to MeasurementField.SHOULDER_TO_ELBOW,
+        "elbowToWrist" to MeasurementField.ELBOW_TO_WRIST,
+        "wrist" to MeasurementField.WRIST,
+        "wristToMiddleFinger" to MeasurementField.WRIST_TO_MIDDLE_FINGER,
+        "thighWidest" to MeasurementField.THIGH_WIDEST,
+        "knee" to MeasurementField.KNEE,
+        "calfWidest" to MeasurementField.CALF_WIDEST,
+        "ankle" to MeasurementField.ANKLE,
+        "innerThighToKnee" to MeasurementField.INNER_THIGH_TO_KNEE,
+        "kneeToAnkle" to MeasurementField.KNEE_TO_ANKLE,
+        "outerThigh" to MeasurementField.OUTER_THIGH,
+        "footLength" to MeasurementField.FOOT_LENGTH,
+        "footWidth" to MeasurementField.FOOT_WIDTH
+    )
 }

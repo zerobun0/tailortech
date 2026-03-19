@@ -12,46 +12,46 @@ enum class UnitSystem {
 data class UserMeasurements(
     @PrimaryKey val id: Int = 1,
     val unitSystem: UnitSystem = UnitSystem.CM,
-    val heightCm: Double = 170.0,
+    val heightCm: Double = 0.0,
 
     // Head and neck
-    val neckCm: Double = 37.7,
-    val headFrontToBackCm: Double = 55.6,
+    val neckCm: Double = 0.0,
+    val headFrontToBackCm: Double = 0.0,
 
     // Torso
-    val chestUpperCm: Double = 93.5,
-    val chestLowerCm: Double = 82.6,
-    val waistNaturalCm: Double = 83.5,
-    val waistPantsLevelCm: Double = 82.7,
-    val hipCm: Double = 89.5,
+    val chestUpperCm: Double = 0.0,
+    val chestLowerCm: Double = 0.0,
+    val waistNaturalCm: Double = 0.0,
+    val waistPantsLevelCm: Double = 0.0,
+    val hipCm: Double = 0.0,
 
     // Shoulders and back
-    val shoulderToShoulderCm: Double = 44.0,
-    val neckToShoulderCm: Double = 17.5,
-    val neckToWaistCm: Double = 44.0,
-    val armscyeCm: Double = 43.0,
-    val riseCrotchCm: Double = 64.0,
+    val shoulderToShoulderCm: Double = 0.0,
+    val neckToShoulderCm: Double = 0.0,
+    val neckToWaistCm: Double = 0.0,
+    val armscyeCm: Double = 0.0,
+    val riseCrotchCm: Double = 0.0,
 
     // Arms
-    val bicepFlexedCm: Double = 32.0,
-    val bicepRelaxedCm: Double = 28.6,
-    val shoulderToElbowCm: Double = 33.9,
-    val elbowToWristCm: Double = 30.0,
-    val wristCm: Double = 16.5,
-    val wristToMiddleFingerCm: Double = 21.2,
+    val bicepFlexedCm: Double = 0.0,
+    val bicepRelaxedCm: Double = 0.0,
+    val shoulderToElbowCm: Double = 0.0,
+    val elbowToWristCm: Double = 0.0,
+    val wristCm: Double = 0.0,
+    val wristToMiddleFingerCm: Double = 0.0,
 
     // Legs
-    val thighWidestCm: Double = 51.2,
-    val kneeCm: Double = 37.2,
-    val calfWidestCm: Double = 33.6,
-    val ankleCm: Double = 23.6,
-    val innerThighToKneeCm: Double = 35.4,
-    val kneeToAnkleCm: Double = 41.6,
-    val outerThighCm: Double = 54.8,
+    val thighWidestCm: Double = 0.0,
+    val kneeCm: Double = 0.0,
+    val calfWidestCm: Double = 0.0,
+    val ankleCm: Double = 0.0,
+    val innerThighToKneeCm: Double = 0.0,
+    val kneeToAnkleCm: Double = 0.0,
+    val outerThighCm: Double = 0.0,
 
     // Feet
-    val footLengthCm: Double = 26.0,
-    val footWidthCm: Double = 9.8
+    val footLengthCm: Double = 0.0,
+    val footWidthCm: Double = 0.0
 ) {
     val inseamCm: Double
         get() = innerThighToKneeCm + kneeToAnkleCm

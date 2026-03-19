@@ -1,0 +1,11 @@
+.gradle/
+.idea/
+*.iml
+local.properties
+**/build/
+C:/Temp/TailorTechBuild/
+*.keystore
+*.jks
+*.log
+.DS_Store
+Thumbs.db

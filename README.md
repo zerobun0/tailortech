@@ -1,0 +1,51 @@
+# TailorTech
+
+TailorTech is an open-source Android app focused on men's body measurements, size conversion, and fit intelligence.
+
+## What is implemented
+
+- Material 3 dark UI with a premium black + neon palette.
+- Room-backed measurement engine using your full measurement schema.
+- Dual-unit support with centimeter and inch rendering.
+- Calculated metrics:
+  - Inseam = Inner Thigh to Knee + Knee to Ankle
+  - Total Arm Length = Shoulder to Elbow + Elbow to Wrist
+- Dashboard with horizontal stats bar: Height, Chest, Waist, Hip, Inseam.
+- Measurement Studio tab replacing silhouette blueprint with guided categories.
+- Browse and Guided Session modes for measurement capture.
+- Progress tracking per category and overall session completion.
+- Required/optional badges with expected-range validation hints.
+- Quick-edit list covering all schema measurement points.
+- Size engine output for UK/US, EU, and China/Asia sizes.
+- Country selector for "My Country" size mapping (UK, US, DE, FR, IT, CN, JP, KR, RU).
+- Fit insights rules for Drop, Rise alert, and Thigh alert.
+- Gemini Outfit Advisor for clothing fit risk analysis from pasted product text.
+
+## Design tokens
+
+- Background: #0d0d0d
+- Surface: #161616
+- Border: #2a2a2a
+- Primary Accent: #c8ff00
+- Secondary Accent: #ff6b35
+- Typography: Syne and DM Mono included in app resources.
+
+## Project notes
+
+- Gradle wrapper is included and verified with `:app:assembleDebug`.
+- Build requires Android SDK path in `local.properties`.
+
+## Gemini setup
+
+Add your Gemini API key to `~/.gradle/gradle.properties` (or project `gradle.properties` for local testing only):
+
+`GEMINI_API_KEY=your_key_here`
+
+Then rebuild the app. The advisor is available inside the Size Insights tab.
+
+## Structure
+
+- app/src/main/java/com/tailortech/app/data
+- app/src/main/java/com/tailortech/app/domain
+- app/src/main/java/com/tailortech/app/ui
+- app/src/main/java/com/tailortech/app/ui/theme
